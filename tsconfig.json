@@ -1,0 +1,6 @@
+{
+  "compilerOptions": {
+    "jsx": "react"
+  },
+  "extends": "@devvit/public-api/devvit.tsconfig.json"
+}
