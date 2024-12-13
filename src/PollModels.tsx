@@ -1,3 +1,5 @@
+import { Devvit } from "@devvit/public-api";
+
 export enum PageType {
   VOTE,
   RESULTS,
@@ -20,4 +22,8 @@ export type PollProps = {
   allowShowResults: boolean;
   randomizeOrder: boolean;
   reset: () => Promise<void>;
+
+  //12th Dec 2024 - Gowdham - ability for user to add option
+  addOptionHandler: ()=>void;
+  addedOption : string;
 };

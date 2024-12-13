@@ -1,4 +1,4 @@
-import { Devvit } from '@devvit/public-api';
+import { Devvit, useForm } from '@devvit/public-api';
 import { VotePage } from './components/VotePage.js';
 import { ResultsPage } from './components/ResultsPage.js';
 import { PageType, PollProps } from './PollModels.js';
@@ -40,7 +40,7 @@ const App: Devvit.CustomPostComponent =  (context) => {
 
   const [currentUserId] = useState(userId);
 
-  const [options] = useState(async () => {
+  const [options,setOptions] = useState(async () => {
     const options = await redis.zRange(key(KeyType.options, postId), 0, -1);
     return options.map((option) => option.member);
   });
@@ -95,6 +95,79 @@ const App: Devvit.CustomPostComponent =  (context) => {
   const optionsPerPollPage = 4;
   const pollPages = Math.ceil(options.length / optionsPerPollPage);
 
+  // 12th Dec 2024 - Gowdham - add option and addedOption
+
+  const addedOption = "dummy"
+
+const addOptionForm = useForm(
+  {
+    fields: [
+      {
+        name: 'userOption',
+        label: 'Your option',
+        type: 'string',
+        required: true,
+        helpText: `You get 1 vote for every user that selects your option`,
+      },
+      // Description will be used as post selftext, once that is supported for custom posts
+      // {
+      //   name: `description`,
+      //   label: `Description (Optional)`,
+      //   type: `string`,
+      // },
+      {
+        name: 'userMessage',
+        label: 'Your message (displays to users who vote your option)',
+        type: 'paragraph',
+        helpText: `Seems like you opened a can of whoop ass!`,
+      },
+      
+    ],
+  },
+  async (values) => {
+    console.log(values)
+    const newOption = values.userOption;
+    if(newOption==null) return;
+    await addOption(newOption);
+  }
+);
+
+// In your component or event handler where you want to show the form
+const addOptionHandler = async () => {
+  await context.ui.showForm(addOptionForm);
+};
+  
+
+  
+const addOption = async (newOption: string) => {
+  console.log('Button pressed!');
+  if (!newOption || newOption.trim() === '') {
+    console.error('Option cannot be empty');
+    return;
+  }
+
+  if (options.includes(newOption)) {
+    console.error('Option already exists');
+    return;
+  }
+
+  try {
+    const updatedOptions = [...options, newOption];
+    setOptions(updatedOptions);
+
+    setVotes((prevVotes) => [...prevVotes, 0]);
+
+    await redis.zAdd(key(KeyType.options, postId), { member: newOption, score: 0 });
+    await redis.set(`polls:${postId}:${updatedOptions.length - 1}`, '0'); // Set initial vote count to 0
+
+    console.log(`Option "${newOption}" added successfully!`);
+  } catch (error) {
+    console.error('Failed to add the option:', error);
+  }
+};
+  
+
+
   const props: PollProps = {
     navigate,
     options,
@@ -111,6 +184,8 @@ const App: Devvit.CustomPostComponent =  (context) => {
     allowShowResults,
     randomizeOrder,
     reset,
+    addOptionHandler,
+    addedOption    
   };
 
   if (!currentUserId) {

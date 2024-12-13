@@ -1,7 +1,9 @@
-import { Devvit } from '@devvit/public-api';
+import { Devvit, useForm } from '@devvit/public-api';
 import { PageType, PollProps } from '../PollModels.js';
 import { KeyType, key, userKey } from '../PollHelpers.js';
 import moment from 'moment';
+import { ResultsPage } from './ResultsPage.js';
+import { addOptionForm2 } from '../functions/addOption.js';
 
 // const props = { option, index, selectedOption, setSelectedOption }
 export const PollOption = ({
@@ -34,6 +36,7 @@ export const PollOption = ({
   );
 };
 
+
 export const VotePage: Devvit.BlockComponent<PollProps> =  (
   {
     options,
@@ -46,9 +49,13 @@ export const VotePage: Devvit.BlockComponent<PollProps> =  (
     remainingMillis,
     allowShowResults,
     randomizeOrder,
+    reset,
+    addOptionHandler,
+    addedOption    
   },
   { redis, useState, userId, postId }
 ) => {
+  
   const remaining = moment.duration(remainingMillis).humanize();
   const [selectedOption, setSelectedOption] = useState(-1);
   const presentedOptions = randomizeOrder ? shuffledOptions : options;
@@ -75,6 +82,7 @@ export const VotePage: Devvit.BlockComponent<PollProps> =  (
       await tx.exec();
       setVotes(votes.map((v, i) => (i === optionIndex ? v + 1 : v)));
     }
+    
     navigate(PageType.RESULTS);
   };
 
@@ -91,6 +99,7 @@ export const VotePage: Devvit.BlockComponent<PollProps> =  (
       setPollPage(pollPage + 1);
     }
   };
+
 
   return (
     <vstack height="100%" width="100%" padding="medium">
@@ -124,6 +133,8 @@ export const VotePage: Devvit.BlockComponent<PollProps> =  (
             return <PollOption {...props} />;
           })}
         </vstack>
+
+
       </vstack>
       <hstack width="100%" height="15%" alignment="middle">
         {pollPages > 1 && (
@@ -145,7 +156,17 @@ export const VotePage: Devvit.BlockComponent<PollProps> =  (
             />
           </hstack>
         )}
+        
         <spacer grow />
+        
+        <button
+          size="medium"
+          appearance="primary"
+          onPress={addOptionHandler}
+        >
+          Add your own answer
+        </button>
+        <spacer />
         <button
           size="medium"
           appearance="primary"
