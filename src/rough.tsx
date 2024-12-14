@@ -314,3 +314,27 @@ Devvit.addCustomPostType({
 
 
 export default Devvit;
+
+
+
+
+const correctAnswer = event.values.correctAnswer.trim();
+const incorrectAnswers = event.values.incorrectAnswers
+  .split(',')
+  .filter((answer: string) => answer.trim() !== '')
+  .slice(0, 12);
+
+  const answers = [
+    { 
+      option: correctAnswer, 
+      username: null, // Placeholder for username
+      outwitMessage: "Correct answer!", // Placeholder for outwit message
+      correct: true // Indicates it's the correct answer
+    },
+    ...incorrectAnswers.map((answer: string) => ({
+      option: answer.trim(),
+      username: 'quizmaster', // Placeholder for username
+      outwitMessage: 'Outwitted by the quizmaster!', // Placeholder for outwit message
+      correct: false // Indicates it's an incorrect answer
+    }))
+  ];

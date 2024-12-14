@@ -10,8 +10,30 @@ type ResultProps = {
   winner: boolean;
 };
 
+const OptionResult: Devvit.BlockComponent<{ option: string, votes: number, total: number, username: string, isCorrect: boolean }> = (props) => {
+  const { option, votes, total, username, isCorrect } = props;
+  const percentage = total > 0 ? (votes / total) * 100 : 0;
+
+  return (
+    <hstack gap="small" alignment="middle">
+      <vstack grow>
+        <text>{option}</text>
+        <hstack>
+          <hstack 
+            backgroundColor={isCorrect ? "green" : "blue"} 
+            width={`${percentage}%`} 
+            height="20px"
+          />
+          <text>{votes} votes ({percentage.toFixed(1)}%)</text>
+        </hstack>
+      </vstack>
+      <text alignment="end">{username}</text>
+    </hstack>
+  );
+};
+
 const PollResult = ({ option, votes, total, winner }: ResultProps): JSX.Element => {
-  const percent = Math.max((votes / total) * 100, 0.2);
+  const percent = Math.max((votes / total) * 100, 0.5);
 
   const nice = formatCount(votes);
 
@@ -40,7 +62,7 @@ const PollResult = ({ option, votes, total, winner }: ResultProps): JSX.Element 
       </vstack>
     );
   }
-
+  
   return (
     <zstack width={'100%'}>
       <PercentBar />
@@ -52,6 +74,7 @@ const PollResult = ({ option, votes, total, winner }: ResultProps): JSX.Element 
     </zstack>
   );
 };
+
 
 export const ResultsPage: Devvit.BlockComponent<PollProps> =  (
   {

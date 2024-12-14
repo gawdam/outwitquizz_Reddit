@@ -51,14 +51,18 @@ export const VotePage: Devvit.BlockComponent<PollProps> =  (
     randomizeOrder,
     reset,
     addOptionHandler,
-    addedOption    
+    addedOption   ,
+    showOutwittedToast
   },
   { redis, useState, userId, postId }
 ) => {
   
+
   const remaining = moment.duration(remainingMillis).humanize();
   const [selectedOption, setSelectedOption] = useState(-1);
   const presentedOptions = randomizeOrder ? shuffledOptions : options;
+
+  
 
   const submitVote: Devvit.Blocks.OnPressEventHandler = async () => {
     const user = userKey(userId, postId);
@@ -82,7 +86,24 @@ export const VotePage: Devvit.BlockComponent<PollProps> =  (
       await tx.exec();
       setVotes(votes.map((v, i) => (i === optionIndex ? v + 1 : v)));
     }
-    
+    const optionDetailsJSON = await redis.get(key(KeyType.optionDetails, postId));
+    if(optionDetailsJSON!=null)
+    {const optionDetails = JSON.parse(optionDetailsJSON!);
+
+    // Get details for the selected option
+    const selectedOptionDetails = optionDetails.find(
+      (detail: { option: string }) => detail.option === selectedOptionString
+    );
+  
+    if (selectedOptionDetails) {
+      const { username, outwitMessage } = selectedOptionDetails;
+  
+      // Display a dialog with the username and outwitMessage
+      showOutwittedToast(username,outwitMessage);
+    } else {
+      console.error('Selected option details not found');
+    }}
+  
     navigate(PageType.RESULTS);
   };
 

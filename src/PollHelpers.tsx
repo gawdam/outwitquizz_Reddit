@@ -32,6 +32,7 @@ export enum KeyType {
   question = `question`,
   description = `description`,
   options = `options`,
+  optionDetails = `optionDetails`,
   allowShowResults = `allowShowResults`,
   voted = `voted`,
   randomizeOrder = `randomizeOrder`,

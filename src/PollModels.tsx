@@ -26,4 +26,5 @@ export type PollProps = {
   //12th Dec 2024 - Gowdham - ability for user to add option
   addOptionHandler: ()=>void;
   addedOption : string;
+  showOutwittedToast: (username: string,outwitMessage:string)=>void;
 };

@@ -125,10 +125,25 @@ const addOptionForm = useForm(
     ],
   },
   async (values) => {
-    console.log(values)
+    console.log(values);
     const newOption = values.userOption;
-    if(newOption==null) return;
-    await addOption(newOption);
+    const newMessage = values.userMessage;
+    if (newOption == null) return;
+
+    try {
+      const currentUser = await context.reddit.getCurrentUser();
+      const username = currentUser?.username;
+
+      if (username) {
+        await updateOption(newOption, newMessage, username);
+      } else {
+        console.error('Unable to retrieve username');
+        context.ui.showToast('Unable to add option: Could not retrieve username');
+      }
+    } catch (error) {
+      console.error('Error getting current user:', error);
+      context.ui.showToast('An error occurred while adding your option');
+    }
   }
 );
 
@@ -138,8 +153,21 @@ const addOptionHandler = async () => {
 };
   
 
-  
-const addOption = async (newOption: string) => {
+
+const addNewOption = async (newOption: string) => {
+  setOptions((prevOptions) => {
+    const updatedOptions = [...prevOptions, newOption];
+    setVotes((prevVotes) => {
+      const updatedVotes = [...prevVotes, 0];
+      // Update Redis here
+      redis.set(`polls:${postId}:${updatedOptions.length - 1}`, '0');
+      return updatedVotes;
+    });
+    return updatedOptions;
+  });
+};
+
+const updateOption = async (newOption: string, newMessage: string|undefined, username: string) => {
   console.log('Button pressed!');
   if (!newOption || newOption.trim() === '') {
     console.error('Option cannot be empty');
@@ -152,20 +180,105 @@ const addOption = async (newOption: string) => {
   }
 
   try {
-    const updatedOptions = [...options, newOption];
-    setOptions(updatedOptions);
+    // Add the new option to the options list
+    await addNewOption(newOption);
 
-    setVotes((prevVotes) => [...prevVotes, 0]);
 
+    const newOptionDetails = {
+      option: newOption,
+      username: username,
+      outwitMessage: newMessage,
+      correct: false,
+    };
+
+    // Retrieve existing option details from Redis
+    const existingOptionDetailsJSON = await redis.get(key(KeyType.optionDetails, postId));
+    const existingOptionDetails = existingOptionDetailsJSON
+      ? JSON.parse(existingOptionDetailsJSON)
+      : [];
+
+    // Append the new option details to the array
+    const updatedOptionDetails = [...existingOptionDetails, newOptionDetails];
+
+    // Save updated option details to Redis
+    const updatedOptionDetailsJSON = JSON.stringify(updatedOptionDetails);
+    await redis.set(key(KeyType.optionDetails, postId), updatedOptionDetailsJSON);
+
+    // Add the new option to the poll options in Redis
     await redis.zAdd(key(KeyType.options, postId), { member: newOption, score: 0 });
-    await redis.set(`polls:${postId}:${updatedOptions.length - 1}`, '0'); // Set initial vote count to 0
 
     console.log(`Option "${newOption}" added successfully!`);
   } catch (error) {
     console.error('Failed to add the option:', error);
   }
 };
+
+const addComment = async (outwitterUsername: string, outwitterUserMessage: string) => {
+  try {
+    
+    // Get the current user
+    const currentUser = await context.reddit.getCurrentUser();
+    const username = currentUser?.username;
+
+    if (username) {
+      // Get the current post
+      const post = await context.reddit.getPostById(postId!);
+
+      // Add a comment to the post
+      await post.addComment({
+        text: `${username} has been outwitted by u/${outwitterUsername}! \nu/${outwitterUsername}- "${outwitterUserMessage}"`,
+      });
+
+      console.log(`Comment added for user ${username}`);
+    } else {
+      console.error('Unable to retrieve username');
+    }
+  } catch (error) {
+    console.error('Error adding comment:', error);
+  }
+}
+
+const showOutwittedToast = async (username: string, userMessage: string) => {
+
   
+  if(username==null){
+    await context.ui.showToast({
+      text: `Correct answer!`,
+      // appearance: 'neutral',
+      // duration: 5000 // Show for 5 seconds
+    });
+  }
+  else{await context.ui.showToast({
+    text: `You've been outwitted by u/${username}! \nu/${username}- "${userMessage}"`,
+    // appearance: 'neutral',
+    // duration: 5000 // Show for 5 seconds
+  });}
+  await addComment(username,userMessage);
+
+};
+const showOutwittedDialog = (context: Devvit.Context, username: string, userMessage: string) => {
+  const outwitForm = Devvit.createForm(
+    {
+      fields: [
+        {
+          name: 'message',
+          label:'',
+          type: 'string',
+          defaultValue: `You've been outwitted by ${username}! ${userMessage}`,
+          disabled: true,
+        },
+      ],
+      title: 'Outwitted!',
+      acceptLabel: 'OK',
+    },
+    () => {
+      // This function is called when the user clicks the OK button
+      // You can add any additional logic here if needed
+    }
+  );
+
+  context.ui.showForm(outwitForm);
+};
 
 
   const props: PollProps = {
@@ -185,7 +298,8 @@ const addOption = async (newOption: string) => {
     randomizeOrder,
     reset,
     addOptionHandler,
-    addedOption    
+    addedOption ,
+    showOutwittedToast
   };
 
   if (!currentUserId) {
