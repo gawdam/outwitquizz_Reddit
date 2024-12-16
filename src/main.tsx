@@ -7,10 +7,21 @@ import { KeyType, key, userKey, resetRedis, shuffle } from './PollHelpers.js';
 import { ConfirmPage } from './components/ConfirmPage.js';
 
 // Devvit.debug.emitSnapshots = true;
+interface OptionDetail {
+  option: string;
+  username: string | null;
+  snoovatarURL: string;
+  outwitMessage: string;
+  correct: boolean;
+  won: number;
+  played:number;
+};
 
 Devvit.configure({
   redis: true,
   redditAPI: true,
+  media: true,
+  http: true,
 });
 
 const App: Devvit.CustomPostComponent =  (context) => {
@@ -18,6 +29,7 @@ const App: Devvit.CustomPostComponent =  (context) => {
   const redis = context.redis;
   const postId = context.postId;
   const userId = context.userId;
+  
 
   const [page, navigate] = useState(async () => {
     let hasVoted = false;
@@ -45,10 +57,52 @@ const App: Devvit.CustomPostComponent =  (context) => {
     return options.map((option) => option.member);
   });
 
+  const [optionDetails , setOptionDetails] = useState(async () => {
+    // Retrieve existing option details from Redis
+    const optionDetailsJSON = await redis.get(key(KeyType.optionDetails, postId));
+    return optionDetailsJSON
+      ? JSON.parse(optionDetailsJSON)
+      : [];
+  });
+
   const [shuffledOptions] = useState(async () => {
-    const array = [...options];
-    shuffle(array);
-    return array;
+    // First, we'll create an array of options with their details
+    const optionsWithDetails = options.map(option => {
+      const detail = optionDetails.find((d:OptionDetail)=> d.option === option);
+      return {
+        option,
+        won: detail?.won || 0,
+        played: detail?.played || 0,
+        correct: detail?.correct || false
+      };
+    });
+  
+    // Calculate win percentage and sort
+    const sortedOptions = optionsWithDetails
+      .map(o => ({
+        ...o,
+        winPercentage: o.played > 0 ? (o.won / o.played) * 100 : 0
+      }))
+      .sort((a, b) => {
+        if (a.winPercentage !== b.winPercentage) {
+          return b.winPercentage - a.winPercentage; // Sort by win percentage descending
+        }
+        return a.played - b.played; // If win percentage is the same, sort by least played
+      });
+  
+    // Get top 3 options
+    const top3 = sortedOptions.slice(0, 3).map(o => o.option);
+  
+    // Add the correct option if it's not already in top 3
+    const correctOption = optionsWithDetails.find(o => o.correct)?.option;
+    if (correctOption && !top3.includes(correctOption)) {
+      top3.push(correctOption);
+    }
+  
+    // Shuffle the final array
+    shuffle(top3);
+  
+    return top3;
   });
 
   const [votes, setVotes] = useState(async () => {
@@ -129,13 +183,15 @@ const addOptionForm = useForm(
     const newOption = values.userOption;
     const newMessage = values.userMessage;
     if (newOption == null) return;
+    
 
     try {
       const currentUser = await context.reddit.getCurrentUser();
       const username = currentUser?.username;
+       const snoovatarURL = await currentUser?.getSnoovatarUrl();
 
       if (username) {
-        await updateOption(newOption, newMessage, username);
+        await updateOption(newOption, newMessage, username, snoovatarURL);
       } else {
         console.error('Unable to retrieve username');
         context.ui.showToast('Unable to add option: Could not retrieve username');
@@ -146,6 +202,7 @@ const addOptionForm = useForm(
     }
   }
 );
+
 
 // In your component or event handler where you want to show the form
 const addOptionHandler = async () => {
@@ -166,8 +223,37 @@ const addNewOption = async (newOption: string) => {
     return updatedOptions;
   });
 };
+const updateOptionDetails = async (postId: string, votedOption: string) => {
+  const { redis } = context;
+  const optionDetailsKey = key(KeyType.optionDetails, postId);
 
-const updateOption = async (newOption: string, newMessage: string|undefined, username: string) => {
+  try {
+    // Get current option details
+    const optionDetailsJSON = await redis.get(optionDetailsKey);
+    if (!optionDetailsJSON) {
+      console.error('Option details not found');
+      return;
+    }
+
+    let optionDetails: OptionDetail[] = JSON.parse(optionDetailsJSON);
+
+    // Update option details
+    optionDetails = optionDetails.map(detail => ({
+      ...detail,
+      played: detail.played + 1,
+      won: detail.option === votedOption ? detail.won + 1 : detail.won
+    }));
+
+    // Save updated option details
+    await redis.set(optionDetailsKey, JSON.stringify(optionDetails));
+
+    console.log('Option details updated successfully');
+  } catch (error) {
+    console.error('Error updating option details:', error);
+  }
+};
+
+const updateOption = async (newOption: string, newMessage: string|undefined, username: string, snoovatarURL: string|undefined) => {
   console.log('Button pressed!');
   if (!newOption || newOption.trim() === '') {
     console.error('Option cannot be empty');
@@ -187,8 +273,11 @@ const updateOption = async (newOption: string, newMessage: string|undefined, use
     const newOptionDetails = {
       option: newOption,
       username: username,
+      snoovatarURL: snoovatarURL,
       outwitMessage: newMessage,
       correct: false,
+      won:0,
+      played:0
     };
 
     // Retrieve existing option details from Redis
@@ -218,15 +307,18 @@ const addComment = async (outwitterUsername: string, outwitterUserMessage: strin
     
     // Get the current user
     const currentUser = await context.reddit.getCurrentUser();
-    const username = currentUser?.username;
+    let username = currentUser?.username;
 
     if (username) {
+      if(username!="Quizmaster"){
+        username = `u/${username}`
+      }
       // Get the current post
       const post = await context.reddit.getPostById(postId!);
 
       // Add a comment to the post
       await post.addComment({
-        text: `${username} has been outwitted by u/${outwitterUsername}! \nu/${outwitterUsername}- "${outwitterUserMessage}"`,
+        text: `${outwitterUsername} has outwitted ${username}! \n\n${outwitterUsername} says "${outwitterUserMessage}"`,
       });
 
       console.log(`Comment added for user ${username}`);
@@ -244,16 +336,23 @@ const showOutwittedToast = async (username: string, userMessage: string) => {
   if(username==null){
     await context.ui.showToast({
       text: `Correct answer!`,
-      // appearance: 'neutral',
+      appearance: "success",
       // duration: 5000 // Show for 5 seconds
     });
   }
-  else{await context.ui.showToast({
-    text: `You've been outwitted by u/${username}! \nu/${username}- "${userMessage}"`,
-    // appearance: 'neutral',
+  
+  else{
+    if(username!="Quizmaster"){
+      username = `u/${username}`
+    }
+    await context.ui.showToast({
+    text: `You've been outwitted by ${username}! \n${username}- "${userMessage}"`,
+    appearance: 'neutral',
     // duration: 5000 // Show for 5 seconds
-  });}
+  });
   await addComment(username,userMessage);
+}
+ 
 
 };
 const showOutwittedDialog = (context: Devvit.Context, username: string, userMessage: string) => {
@@ -299,7 +398,9 @@ const showOutwittedDialog = (context: Devvit.Context, username: string, userMess
     reset,
     addOptionHandler,
     addedOption ,
-    showOutwittedToast
+    showOutwittedToast,
+    optionDetails,
+    updateOptionDetails
   };
 
   if (!currentUserId) {

@@ -44,14 +44,14 @@ export const addPoll = Devvit.createForm(
         name: 'randomizeOrder',
         label: 'Shuffle order of poll options',
         type: 'boolean',
-        defaultValue: true,
+        defaultValue: false,
         helpText: `To reduce bias, options will be presented to the user in a shuffled order.`,
       },
       {
         name: 'allowShowResults',
         label: 'Include "Show Results" option',
         type: 'boolean',
-        defaultValue: true,
+        defaultValue: false,
         helpText: `This allow users to see poll results without voting. Users cannot vote after viewing the results.`,
       },
     ],
@@ -97,8 +97,12 @@ export const addPoll = Devvit.createForm(
   {
     option: event.values.correctAnswer,
     username: null,
+    snoovatarURL: null,
     outwitMessage: "This is the correct answer!",
     correct: true,
+    won:0,
+    played:0
+  
   },
   ...event.values.incorrectAnswers
     .split(',')
@@ -107,8 +111,11 @@ export const addPoll = Devvit.createForm(
     .map((answer: string) => ({
       option: answer,
       username: "Quizmaster",
-      outwitMessage: "This is a tricky one.",
+      snoovatarURL: null,
+      outwitMessage: "Consider investing on your IQ",
       correct: false,
+      won:0,
+      played:0
     })),
 ];
 
@@ -126,7 +133,6 @@ export const addPoll = Devvit.createForm(
     await redis.set(key(KeyType.allowShowResults, post.id), allowShowResults);
     await redis.set(key(KeyType.randomizeOrder, post.id), randomizeOrder);
 
-    console.log(optionDetailsJSON);
-    ui.showToast('Poll created!');
+    ui.showToast('Quiz created!');
   }
 );

@@ -52,7 +52,8 @@ export const VotePage: Devvit.BlockComponent<PollProps> =  (
     reset,
     addOptionHandler,
     addedOption   ,
-    showOutwittedToast
+    showOutwittedToast,
+    updateOptionDetails,
   },
   { redis, useState, userId, postId }
 ) => {
@@ -85,6 +86,7 @@ export const VotePage: Devvit.BlockComponent<PollProps> =  (
       await redis.incrBy(`polls:${postId}:${optionIndex}`, 1);
       await tx.exec();
       setVotes(votes.map((v, i) => (i === optionIndex ? v + 1 : v)));
+      await updateOptionDetails(postId!, selectedOptionString);
     }
     const optionDetailsJSON = await redis.get(key(KeyType.optionDetails, postId));
     if(optionDetailsJSON!=null)
@@ -175,20 +177,8 @@ export const VotePage: Devvit.BlockComponent<PollProps> =  (
               onPress={nextPollPage}
               disabled={pollPage === pollPages}
             />
-          </hstack>
-        )}
-        
-        <spacer grow />
-        
-        <button
-          size="medium"
-          appearance="primary"
-          onPress={addOptionHandler}
-        >
-          Add your own answer
-        </button>
-        <spacer />
-        <button
+          <hstack width="100%" height="100%" alignment="middle">
+          <button
           size="medium"
           appearance="primary"
           onPress={submitVote}
@@ -196,6 +186,14 @@ export const VotePage: Devvit.BlockComponent<PollProps> =  (
         >
           Vote!
         </button>
+        </hstack>
+          </hstack>
+        )}
+        
+        <spacer />
+        
+        
+        
       </hstack>
     </vstack>
   );

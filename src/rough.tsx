@@ -1,340 +1,192 @@
-import { Devvit, UseStateResult } from '@devvit/public-api';
-import { VotePage } from './components/VotePage.js';
-import { ResultsPage } from './components/ResultsPage.js';
-import { PageType, PollProps } from './PollModels.js';
-import { addPoll } from './components/CreatePoll.js';
-import { KeyType, key, userKey, resetRedis, shuffle } from './PollHelpers.js';
-import { ConfirmPage } from './components/ConfirmPage.js';
+import { Devvit } from '@devvit/public-api';
+import { PageType, PollProps } from '../PollModels.js';
+import { formatCount } from '../PollHelpers.js';
+import moment from 'moment';
 
-// Devvit.debug.emitSnapshots = true;
+type ResultProps = {
+  option: string;
+  votes: number;
+  total: number;
+  winner: boolean;
+};
 
-Devvit.configure({
-  redis: true,
-  redditAPI: true,
-});
-
-const testApp: Devvit.CustomPostComponent = context => {
-  const { useState } = context;
-  const [page, setPage] = useState('a');
-
-  let currentPage;
-  switch (page) {
-    case 'a':
-      currentPage = <PageA setPage={setPage} />;
-      break;
-    case 'b':
-      currentPage = <PageB setPage={setPage} />;
-      break;
-    default:
-      currentPage = <PageA setPage={setPage} />;
-  }
+const OptionResult: Devvit.BlockComponent<{ option: string, votes: number, total: number, username: string, isCorrect: boolean }> = (props) => {
+  const { option, votes, total, username, isCorrect } = props;
+  const percentage = total > 0 ? (votes / total) * 100 : 0;
 
   return (
-    <blocks>
-      {currentPage}
-    </blocks>
-  )
-}
-
-const PageA = ({ setPage }: PageProps) => (
-  <vstack
-    width="100%"
-    height="100%"
-    alignment="middle center"
-    gap="large"
-    backgroundColor="lightblue"
-  >
-    <text size="xxlarge">Page A</text>
-    <button onPress={() => setPage('b')}>Go to B</button>
-  </vstack>
-);
-
-const PageB = ({ setPage }: PageProps) => (
-  <vstack
-    width="100%"
-    height="100%"
-    alignment="middle center"
-    gap="large"
-    backgroundColor="yellow"
-  >
-    <text size="xxlarge">Page B</text>
-    <button onPress={() => setPage('a')}>Go to A</button>
-  </vstack>
-);
-
-
-type PageProps = {
-  setPage: (page: string) => void;
-}
-
-
-
-const App: Devvit.CustomPostComponent = (context) => { 
-  const { useState, redis, postId, userId } = context;
-
-  // State for tracking the current page
-  const [page, navigate] = useState(() => PageType.VOTE);
-
-  // State for tracking votes
-  const [votes, setVotes] = useState<number[]>([]);
-  const [shuffledOptions, setShuffledOptions] = useState<string[]>([]);
-  const [options, setOptions] = useState<string[]>([]);
-  const [finish, setFinish] = useState(0);
-  const [description, setDescription] = useState<string | undefined>();
-  const [allowShowResults, setAllowShowResults] = useState(false);
-  const [randomizeOrder, setRandomizeOrder] = useState(false);
-
-  const optionsPerPollPage = 4;
-  const total = votes.reduce((a, b) => a + b, 0);
-  const now = new Date().getTime();
-  const remainingMillis = finish - now;
-
-  // Load data once on initialization
-  useState(async () => {
-    if (!postId) {
-      // Load fixture data in development mode
-      if (!(await redis.get(key(KeyType.question, `undefined`)))) {
-        await resetRedis(context);
-      }
-    }
-
-    // Fetch poll options
-    const fetchedOptions = await redis.zRange(key(KeyType.options, postId), 0, -1);
-    const optionList = fetchedOptions.map((option) => option.member);
-    setOptions(optionList);
-
-    // Shuffle options if required
-    const shuffled = [...optionList];
-    shuffle(shuffled);
-    setShuffledOptions(shuffled);
-
-    // Fetch votes
-    const rsp = await redis.mget(optionList.map((_option, i) => `polls:${postId}:${i}`));
-    setVotes(rsp.map((count) => parseInt(count || '0')));
-
-    // Fetch poll finish time
-    const finishTime = await redis.get(key(KeyType.finish, postId));
-    setFinish(parseInt(finishTime || '0'));
-
-    // Fetch description
-    const pollDescription = await redis.get(key(KeyType.description, postId));
-    setDescription(pollDescription);
-
-    // Fetch allowShowResults flag
-    const allowResults = await redis.get(key(KeyType.allowShowResults, postId));
-    setAllowShowResults(allowResults === 'true');
-
-    // Fetch randomizeOrder flag
-    const randomize = await redis.get(key(KeyType.randomizeOrder, postId));
-    setRandomizeOrder(randomize === 'true');
-
-    // Determine initial page
-    const hasVoted = !!(await redis.get(userKey(userId, postId)));
-    navigate(hasVoted ? PageType.RESULTS : PageType.VOTE);
-  });
-
-  const reset = async (): Promise<void> => {
-    await resetRedis(context);
-    setVotes([0, 0, 0]); // Default vote reset
-    setFinish(new Date().getTime() + 5 * 60 * 1000); // Set new finish time
-  };
-
-  const pollPages = Math.ceil(options.length / optionsPerPollPage);
-
-  const props: PollProps = {
-    navigate,
-    options,
-    shuffledOptions,
-    optionsPerPollPage,
-    pollPages,
-    setFinish,
-    votes,
-    description,
-    finish,
-    total,
-    setVotes,
-    remainingMillis,
-    allowShowResults,
-    randomizeOrder,
-    reset,
-  };
-
-  // Render logic
-  if (!userId) {
-    return (
-      <hstack grow alignment={'center middle'}>
-        <text>Not logged in</text>
-      </hstack>
-    );
-  } else if (page === PageType.VOTE && remainingMillis > 0) {
-    return <VotePage {...props} />;
-  } else if (page === PageType.CONFIRM && remainingMillis > 0) {
-    return <ConfirmPage {...props} />;
-  } else {
-    return <ResultsPage {...props} />;
-  }
+    <hstack gap="small" alignment="middle">
+      <vstack grow>
+        <text>{option}</text>
+        <hstack>
+          <hstack 
+            backgroundColor={isCorrect ? "green" : "blue"} 
+            width={`${percentage}%`} 
+            height="20px"
+          />
+          <text>{votes} votes ({percentage.toFixed(1)}%)</text>
+        </hstack>
+      </vstack>
+      <text alignment="end">{username}</text>
+    </hstack>
+  );
 };
 
+const PollResult = ({ option, votes, total, winner }: ResultProps): JSX.Element => {
+  const percent = Math.max((votes / total) * 100, 0.5);
 
+  const nice = formatCount(votes);
 
-const App2: Devvit.CustomPostComponent = async (context) => {
-  const { useState } = context;
+  const PercentBar = (): JSX.Element | false =>
+    percent >= 0 && (
+      <hstack
+        cornerRadius="small"
+        backgroundColor={winner ? 'upvote-background-disabled' : 'downvote-background-disabled'}
+        width={percent}
+        height={'100%'}
+        alignment={'center middle'}
+      >
+        <vstack>
+          <spacer shape="square" size="small" />
+        </vstack>
+      </hstack>
+    );
 
-  const redis = context.redis;
-  const postId = context.postId;
-  const userId = context.userId;
-
-  const [page, navigate] = useState(async () => {
-    let hasVoted = false;
-    try {
-      hasVoted = !!(await redis.get(userKey(userId, postId)));
-    } catch {
-      //
-    }
-    return hasVoted ? PageType.RESULTS : PageType.VOTE;
-  });
-
-  useState(async () => {
-    if (postId) return;
-
-    // Load fixture data in dev mode.
-    if (!(await redis.get(key(KeyType.question, `undefined`)))) {
-      await resetRedis(context);
-    }
-  });
-
-  const [currentUserId] = useState(userId);
-
-
-  const [options] = useState(async () => {
-    const options = await redis.zRange(key(KeyType.options, postId), 0, -1);
-    return options.map((option) => option.member);
-  });
-  const rsp = await redis.mget(options.map((_option, i) => `polls:${postId}:${i}`));
-
+  if (!option && !votes) {
+    return (
+      <vstack>
+        <text color={'transparent'}>_</text>
+        <hstack border={'thin'} borderColor={'transparent'}>
+          <text color={'transparent'}>_</text>
+        </hstack>
+      </vstack>
+    );
+  }
   
-
-  const [shuffledOptions] = useState(async () => {
-    const array = [...options];
-    shuffle(array);
-    return array;
-  });
-
-  const [votes, setVotes] = useState(async () => {
-    const rsp = await redis.mget(options.map((_option, i) => `polls:${postId}:${i}`));
-    return rsp.map((count) => parseInt(count || '0'));
-  });
-
-  /* Want to know how many skips? ¯\_(ツ)_/¯
-  const [skips, setSkips] = useState(async () => {
-    return await redis.get(`polls:${postId}:${-2}`);
-  });
-  console.log(`skips - ${skips}`)
-  */
-
-  const reset = async (): Promise<void> => {
-    await resetRedis(context);
-    setVotes([0, 0, 0]);
-    setFinish(new Date().getTime() + 5 * 60 * 1000);
-  };
-
-  const total = votes.reduce((a, b) => a + b, 0);
-
-  const now = new Date().getTime();
-  const [finish, setFinish] = useState(async () => {
-    const finish = await redis.get(key(KeyType.finish, postId));
-    return parseInt(finish || '0');
-  });
-  const remainingMillis = finish - now;
-
-  const [description, _setDescription] = useState(async () => {
-    return await redis.get(key(KeyType.description, postId));
-  });
-
-  const [allowShowResults, _setAllowShowResults] = useState(async () => {
-    const allow = await redis.get(key(KeyType.allowShowResults, postId));
-    return allow === 'true';
-  });
-
-  const [randomizeOrder, _setRandomizeOrder] = useState(async () => {
-    const randomize = await redis.get(key(KeyType.randomizeOrder, postId));
-    return randomize === 'true';
-  });
-
-  const optionsPerPollPage = 4;
-  const pollPages = Math.ceil(options.length / optionsPerPollPage);
-
-  const props: PollProps = {
-    navigate,
-    options,
-    shuffledOptions,
-    optionsPerPollPage,
-    pollPages,
-    setFinish,
-    votes,
-    description,
-    finish,
-    total,
-    setVotes,
-    remainingMillis,
-    allowShowResults,
-    randomizeOrder,
-    reset,
-  };
-
-  if (!currentUserId) {
-    return (
-      <hstack grow alignment={'center middle'}>
-        <text>Not logged in</text>
+  return (
+    <zstack width={'100%'}>
+      <PercentBar />
+      <hstack padding="small" width="100%">
+        <text weight="bold">{nice}</text>
+        <spacer size="medium" />
+        <text grow>{option}</text>
       </hstack>
-    );
-  } else if (page === PageType.VOTE && remainingMillis > 0) {
-    return <VotePage {...props} />;
-  } else if (page === PageType.CONFIRM && remainingMillis > 0) {
-    return <ConfirmPage {...props} />;
-  } else {
-    return <ResultsPage {...props} />;
-  }
+    </zstack>
+  );
 };
 
-Devvit.addMenuItem({
-  label: 'Create a new poll',
-  location: 'subreddit',
-  onPress: (_event, context) => {
-    context.ui.showForm(addPoll);
+
+
+
+export const ResultsPage: Devvit.BlockComponent<PollProps> =  (
+  {
+    reset,
+    finish,
+    setFinish,
+    options,
+    optionsPerPollPage,
+    pollPages,
+    votes,
+    total,
+    remainingMillis,
+    navigate,
+    optionDetails
   },
-});
+  { postId, useState }
+) => {
+  const remaining = moment.duration(remainingMillis).humanize();
+  const max = Math.max(...votes);
 
-Devvit.addCustomPostType({
-  name: 'Polls Plus',
-  description: 'Polls but better',
-  render: App
-});
+  const zipped = options.map((option, index) => ({
+    option,
+    votes: votes[index],
+    total,
+    winner: votes[index] === max,
+  }));
+  zipped.sort((a, b) => b.votes - a.votes);
+  const three = 3 * 60 * 1000;
 
+  const [pollPage, setPollPage] = useState(1);
+  const rangeStart = (pollPage - 1) * optionsPerPollPage;
+  const rangeEnd = pollPage * optionsPerPollPage;
 
+  const prevPollPage: Devvit.Blocks.OnPressEventHandler = async () => {
+    if (pollPage > 1) {
+      setPollPage(pollPage - 1);
+    }
+  };
+  const nextPollPage: Devvit.Blocks.OnPressEventHandler = async () => {
+    if (pollPage < pollPages) {
+      setPollPage(pollPage + 1);
+    }
+  };
 
-export default Devvit;
+  return (
+    <vstack width="100%" height="100%" padding="medium">
+      {remainingMillis > 0 && (
+        <hstack height="15%" width="100%" alignment="middle">
+          <text style="heading" color="green">
+            Open
+          </text>
+          <text style="body">&nbsp;· {remaining} left</text>
+        </hstack>
+      )}
+      {remainingMillis <= 0 && (
+        <hstack height="15%" width="100%" alignment="middle">
+          <text style="heading">Closed</text>
+          <text style="body">&nbsp;· {formatCount(total)} votes</text>
+        </hstack>
+      )}
+      <spacer size="xsmall" />
+      <hstack border="thin"></hstack>
 
+      <vstack gap="small" grow>
+        <spacer size="xsmall" />
+        {zipped.slice(rangeStart, rangeEnd).map((props) => {
+          return <PollResult {...props} />;
+        })}
+      </vstack>
 
+      <hstack width="100%" height="15%" alignment="middle">
+        {pollPages > 1 && (
+          <hstack grow gap="medium" alignment="middle">
+            <button
+              size="small"
+              icon="back-outline"
+              onPress={prevPollPage}
+              disabled={pollPage === 1}
+            />
+            <text>
+              Page {pollPage} of {pollPages}
+            </text>
+            <button
+              size="small"
+              icon="forward-outline"
+              onPress={nextPollPage}
+              disabled={pollPage === pollPages}
+            />
+          </hstack>
+        )}
+      </hstack>
 
-
-const correctAnswer = event.values.correctAnswer.trim();
-const incorrectAnswers = event.values.incorrectAnswers
-  .split(',')
-  .filter((answer: string) => answer.trim() !== '')
-  .slice(0, 12);
-
-  const answers = [
-    { 
-      option: correctAnswer, 
-      username: null, // Placeholder for username
-      outwitMessage: "Correct answer!", // Placeholder for outwit message
-      correct: true // Indicates it's the correct answer
-    },
-    ...incorrectAnswers.map((answer: string) => ({
-      option: answer.trim(),
-      username: 'quizmaster', // Placeholder for username
-      outwitMessage: 'Outwitted by the quizmaster!', // Placeholder for outwit message
-      correct: false // Indicates it's an incorrect answer
-    }))
-  ];
+      {!postId && ( // i.e. only in development mode.
+        <vstack gap="medium">
+          <text>Local debug panel</text>
+          <hstack gap="medium">
+            <button
+              onPress={async () => {
+                await reset();
+                navigate(PageType.VOTE);
+              }}
+            >
+              Reset
+            </button>
+            <button onPress={() => navigate(PageType.VOTE)}>Vote again</button>
+            <button onPress={() => setFinish(finish + three)}>+3 minutes</button>
+            <button onPress={() => setFinish(finish - three)}>-3 minutes</button>
+          </hstack>
+        </vstack>
+      )}
+    </vstack>
+  );
+};

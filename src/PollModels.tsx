@@ -6,6 +6,16 @@ export enum PageType {
   CONFIRM,
 }
 
+type OptionDetail = {
+  option: string;
+  username: string | null;
+  snoovatarURL: string;
+  outwitMessage: string;
+  correct: boolean;
+  won: number;
+  played:number;
+};
+
 export type PollProps = {
   navigate: (page: PageType) => void;
   remainingMillis: number;
@@ -27,4 +37,6 @@ export type PollProps = {
   addOptionHandler: ()=>void;
   addedOption : string;
   showOutwittedToast: (username: string,outwitMessage:string)=>void;
+  optionDetails: OptionDetail[],
+  updateOptionDetails:(postId: string, votedOption: string)=>void;
 };
