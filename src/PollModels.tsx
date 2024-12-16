@@ -6,7 +6,7 @@ export enum PageType {
   CONFIRM,
 }
 
-type OptionDetail = {
+interface OptionDetail {
   option: string;
   username: string | null;
   snoovatarURL: string;
@@ -39,4 +39,5 @@ export type PollProps = {
   showOutwittedToast: (username: string,outwitMessage:string)=>void;
   optionDetails: OptionDetail[],
   updateOptionDetails:(postId: string, votedOption: string)=>void;
+  isButtonDisabled:boolean;
 };

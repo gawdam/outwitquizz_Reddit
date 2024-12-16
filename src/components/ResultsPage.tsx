@@ -24,15 +24,15 @@ type ResultProps = {
 
 
 const PollResult = ({ option, votes, total, winner, optionDetail }: ResultProps): JSX.Element => {
-  const percent = Math.max((optionDetail.won / total) * 100, 0.5);
-  const voteCount = formatCount(optionDetail.won);
+  const percent = Math.max((votes / total) * 100, 0.5);
+  const voteCount = formatCount(votes);
   const [showUsername, setShowUsername] = useState(false);
   const percentFormatted = percent.toFixed(1);
 
   const getBarColor = () => {
     if (optionDetail.correct && winner) return 'green';
     if (optionDetail.correct && !winner) return 'rgba(0, 255, 0, 0.3)'; // faded green
-    return winner ? 'upvote-foreground-enabled' : 'upvote-background-disabled';
+    return winner ? 'orange' : 'upvote-background-disabled';
   };
 
   const PercentBar = (): JSX.Element | false =>
@@ -98,7 +98,7 @@ const PollResult = ({ option, votes, total, winner, optionDetail }: ResultProps)
         <hstack padding="small" width="100%" alignment="middle">
         <text weight="bold">{voteCount}</text>
           <spacer size="medium" />
-          <text grow>{option}</text>
+          <text grow>{optionDetail.option}</text>
         </hstack>
       </zstack>
     </hstack>
@@ -108,8 +108,9 @@ const PollResult = ({ option, votes, total, winner, optionDetail }: ResultProps)
 
 
 export const ResultsPage: Devvit.BlockComponent<PollProps> =  (
+
   {
-    reset,
+    // reset,
     finish,
     setFinish,
     options,
@@ -120,18 +121,23 @@ export const ResultsPage: Devvit.BlockComponent<PollProps> =  (
     remainingMillis,
     navigate,
     addOptionHandler,
-    optionDetails
+    optionDetails,
+    isButtonDisabled
   },
   { postId, useState }
 ) => {
   const remaining = moment.duration(remainingMillis).humanize();
   const max = Math.max(...votes);
+  console.log("option:"+options)
+  console.log("votes:"+votes)
+
 
   const zipped = options.map((option, index) => {
     const matchingOptionDetail = optionDetails.find(detail => detail.option === option);
+
     return {
       option,
-      votes: matchingOptionDetail!.won,
+      votes: votes[index],
       total,
       winner: votes[index] === max,
       optionDetail: matchingOptionDetail!// Fallback to an empty object if no match is found
@@ -159,9 +165,7 @@ export const ResultsPage: Devvit.BlockComponent<PollProps> =  (
     <vstack width="100%" height="100%" padding="medium" gap="none" grow>
       {remainingMillis > 0 && (
         <hstack height="10%" width="100%" alignment="middle">
-          <text style="heading" color="green">
-            Open
-          </text>
+          <text style="heading" color="green">Open</text>
           <text style="body">&nbsp;· {remaining} left</text>
         </hstack>
       )}
@@ -172,27 +176,38 @@ export const ResultsPage: Devvit.BlockComponent<PollProps> =  (
         </hstack>
       )}
       <spacer size="xsmall" />
-      <hstack border="thin"></hstack>
-
-      <vstack gap="small">
+      <hstack border="thin" />
+  
+      <vstack gap="small" grow>
         <spacer size="xsmall" />
-        {zipped.slice(rangeStart, rangeEnd).map((props) => {
-          return <PollResult {...props} />;
-        })}
+        {zipped.slice(rangeStart, rangeEnd).map((props) => (
+          <PollResult {...props} />
+        ))}
       </vstack>
-      <spacer />
+      <spacer size="xsmall" />
+      
       <hstack width="100%" height="15%" alignment="middle">
+        <hstack grow alignment="start">
+          <spacer />
+          <button 
+        size="medium" 
+        appearance="primary" 
+        onPress={addOptionHandler}
+        disabled={isButtonDisabled}
+      >
+            Add your own answer
+          </button>
+        </hstack>
+        <spacer grow />
         {pollPages > 1 && (
-          <hstack grow gap="medium" alignment="middle">
+          <hstack grow gap="medium" alignment="center middle">
             <button
               size="small"
               icon="back-outline"
               onPress={prevPollPage}
               disabled={pollPage === 1}
             />
-            <text>
-              Page {pollPage} of {pollPages}
-            </text>
+            <text>Page {pollPage} of {pollPages}</text>
             <button
               size="small"
               icon="forward-outline"
@@ -201,19 +216,8 @@ export const ResultsPage: Devvit.BlockComponent<PollProps> =  (
             />
           </hstack>
         )}
-        <hstack width="100%" height="100%" alignment="middle">
-      <spacer />
-      <button
-          size="medium"
-          appearance="primary"
-          onPress={addOptionHandler}
-        >
-          Add your own answer
-        </button>
-        </hstack>
       </hstack>
-
-      
     </vstack>
   );
+  
 };

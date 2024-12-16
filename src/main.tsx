@@ -25,6 +25,7 @@ Devvit.configure({
 });
 
 const App: Devvit.CustomPostComponent =  (context) => {
+  
   const useState = context.useState;
   const redis = context.redis;
   const postId = context.postId;
@@ -53,22 +54,28 @@ const App: Devvit.CustomPostComponent =  (context) => {
   const [currentUserId] = useState(userId);
 
   const [options,setOptions] = useState(async () => {
+    const scores : {member : string, score : number}[] = await context.redis.zRange("leaderboard", 0, 30, { by: "score" });
+
     const options = await redis.zRange(key(KeyType.options, postId), 0, -1);
-    return options.map((option) => option.member);
+    return options!.map((option) => option.member);
+  });
+
+  const [votes, setVotes] = useState(async () => {
+    const rsp = await redis.mget(options.map((_option, i) => `polls:${postId}:${i}`));
+    return rsp.map((count) => parseInt(count || '0'));
   });
 
   const [optionDetails , setOptionDetails] = useState(async () => {
     // Retrieve existing option details from Redis
     const optionDetailsJSON = await redis.get(key(KeyType.optionDetails, postId));
-    return optionDetailsJSON
-      ? JSON.parse(optionDetailsJSON)
-      : [];
+    return JSON.parse(optionDetailsJSON!)
+      ;
   });
 
   const [shuffledOptions] = useState(async () => {
     // First, we'll create an array of options with their details
     const optionsWithDetails = options.map(option => {
-      const detail = optionDetails.find((d:OptionDetail)=> d.option === option);
+      const detail = optionDetails.find((d: OptionDetail) => d.option === option);
       return {
         option,
         won: detail?.won || 0,
@@ -90,25 +97,29 @@ const App: Devvit.CustomPostComponent =  (context) => {
         return a.played - b.played; // If win percentage is the same, sort by least played
       });
   
-    // Get top 3 options
-    const top3 = sortedOptions.slice(0, 3).map(o => o.option);
+    // Get top 4 options
+    const top4 = sortedOptions.slice(0, 4).map(o => o.option);
   
-    // Add the correct option if it's not already in top 3
+    // Find the correct option
     const correctOption = optionsWithDetails.find(o => o.correct)?.option;
-    if (correctOption && !top3.includes(correctOption)) {
-      top3.push(correctOption);
+  
+    let finalOptions: string[];
+  
+    if (correctOption && !top4.includes(correctOption)) {
+      // If correct option isn't in top 4, remove bottom most and add correct option
+      finalOptions = [...top4.slice(0, 3), correctOption];
+    } else {
+      // If correct option is in top 4 or doesn't exist, use top 4
+      finalOptions = top4;
     }
   
     // Shuffle the final array
-    shuffle(top3);
+    shuffle(finalOptions);
   
-    return top3;
+    return finalOptions;
   });
 
-  const [votes, setVotes] = useState(async () => {
-    const rsp = await redis.mget(options.map((_option, i) => `polls:${postId}:${i}`));
-    return rsp.map((count) => parseInt(count || '0'));
-  });
+  
 
   /* Want to know how many skips? ¯\_(ツ)_/¯
   const [skips, setSkips] = useState(async () => {
@@ -116,6 +127,16 @@ const App: Devvit.CustomPostComponent =  (context) => {
   });
   console.log(`skips - ${skips}`)
   */
+  const hasUserAddedOption = async (optionDetails: OptionDetail[]) => {
+    const currentUser = await context.reddit.getCurrentUser();
+      const currentUsername = currentUser?.username;
+    return optionDetails.some(detail => detail.username === currentUsername);
+  };
+  const [isButtonDisabled, setIsButtonDisabled] = useState(async () => {
+    // const finish = await redis.get(key(KeyType.finish, postId));
+    return await hasUserAddedOption(optionDetails)||false;
+  });
+  
 
   const reset = async (): Promise<void> => {
     await resetRedis(context);
@@ -173,12 +194,13 @@ const addOptionForm = useForm(
         name: 'userMessage',
         label: 'Your message (displays to users who vote your option)',
         type: 'paragraph',
-        helpText: `Seems like you opened a can of whoop ass!`,
+        helpText: `Eg. Seems like you opened a can of whoop ass!`,
       },
       
     ],
   },
   async (values) => {
+    
     console.log(values);
     const newOption = values.userOption;
     const newMessage = values.userMessage;
@@ -206,23 +228,48 @@ const addOptionForm = useForm(
 
 // In your component or event handler where you want to show the form
 const addOptionHandler = async () => {
-  await context.ui.showForm(addOptionForm);
+  if(isButtonDisabled){context.ui.showToast("You've already added an option")}
+  else{
+    setIsButtonDisabled(true);
+    await context.ui.showForm(addOptionForm);
+  }
 };
   
 
 
 const addNewOption = async (newOption: string) => {
+  
+
+    await redis.zAdd(key(KeyType.options, postId), { member: newOption, score: 0 });
+
   setOptions((prevOptions) => {
-    const updatedOptions = [...prevOptions, newOption];
+    const updatedOptions = [...prevOptions, newOption].sort();
+    const newOptionIndex = updatedOptions.indexOf(newOption);
+    
+
     setVotes((prevVotes) => {
-      const updatedVotes = [...prevVotes, 0];
+      const updatedVotes = [...prevVotes];
+      updatedVotes.splice(newOptionIndex, 0, 0)
+      
       // Update Redis here
-      redis.set(`polls:${postId}:${updatedOptions.length - 1}`, '0');
+      redis.set(`polls:${postId}:${newOption}`, '0');
+      
+      // Update all votes in Redis to maintain correct order
+      updatedOptions.forEach((option,i) => {
+        redis.set(`polls:${postId}:${i}`, updatedVotes[i].toString());
+      });
+
       return updatedVotes;
     });
+
+
     return updatedOptions;
   });
 };
+    
+ 
+
+// };
 const updateOptionDetails = async (postId: string, votedOption: string) => {
   const { redis } = context;
   const optionDetailsKey = key(KeyType.optionDetails, postId);
@@ -266,7 +313,7 @@ const updateOption = async (newOption: string, newMessage: string|undefined, use
   }
 
   try {
-    // Add the new option to the options list
+
     await addNewOption(newOption);
 
 
@@ -293,14 +340,20 @@ const updateOption = async (newOption: string, newMessage: string|undefined, use
     const updatedOptionDetailsJSON = JSON.stringify(updatedOptionDetails);
     await redis.set(key(KeyType.optionDetails, postId), updatedOptionDetailsJSON);
 
-    // Add the new option to the poll options in Redis
-    await redis.zAdd(key(KeyType.options, postId), { member: newOption, score: 0 });
+    // // Add the new option to the poll options in Redis
+    // await redis.zAdd(key(KeyType.options, postId), { member: newOption, score: 0 });
+    
+    // const newOptionIndex = options.indexOf(newOption);
+    // await redis.set(`polls:${postId}:${newOptionIndex}`, '0');
+    // setVotes([...votes,0]);
+    
 
-    console.log(`Option "${newOption}" added successfully!`);
+    context.ui.showToast(`Option added successfully!`);
   } catch (error) {
     console.error('Failed to add the option:', error);
   }
 };
+
 
 const addComment = async (outwitterUsername: string, outwitterUserMessage: string) => {
   try {
@@ -316,10 +369,17 @@ const addComment = async (outwitterUsername: string, outwitterUserMessage: strin
       // Get the current post
       const post = await context.reddit.getPostById(postId!);
 
+      if(outwitterUserMessage==null){
+        await post.addComment({
+          text: `${outwitterUsername} has outwitted ${username}!"`,
+        });
+      }
       // Add a comment to the post
-      await post.addComment({
+      else{
+        await post.addComment({
         text: `${outwitterUsername} has outwitted ${username}! \n\n${outwitterUsername} says "${outwitterUserMessage}"`,
       });
+    }
 
       console.log(`Comment added for user ${username}`);
     } else {
@@ -400,7 +460,8 @@ const showOutwittedDialog = (context: Devvit.Context, username: string, userMess
     addedOption ,
     showOutwittedToast,
     optionDetails,
-    updateOptionDetails
+    updateOptionDetails,
+    isButtonDisabled,
   };
 
   if (!currentUserId) {

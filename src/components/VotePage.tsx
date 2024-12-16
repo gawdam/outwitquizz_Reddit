@@ -49,7 +49,7 @@ export const VotePage: Devvit.BlockComponent<PollProps> =  (
     remainingMillis,
     allowShowResults,
     randomizeOrder,
-    reset,
+    // reset,
     addOptionHandler,
     addedOption   ,
     showOutwittedToast,
@@ -61,7 +61,7 @@ export const VotePage: Devvit.BlockComponent<PollProps> =  (
 
   const remaining = moment.duration(remainingMillis).humanize();
   const [selectedOption, setSelectedOption] = useState(-1);
-  const presentedOptions = randomizeOrder ? shuffledOptions : options;
+  const presentedOptions =shuffledOptions;
 
   
 
@@ -86,6 +86,7 @@ export const VotePage: Devvit.BlockComponent<PollProps> =  (
       await redis.incrBy(`polls:${postId}:${optionIndex}`, 1);
       await tx.exec();
       setVotes(votes.map((v, i) => (i === optionIndex ? v + 1 : v)));
+      console.log('o')
       await updateOptionDetails(postId!, selectedOptionString);
     }
     const optionDetailsJSON = await redis.get(key(KeyType.optionDetails, postId));
@@ -177,7 +178,13 @@ export const VotePage: Devvit.BlockComponent<PollProps> =  (
               onPress={nextPollPage}
               disabled={pollPage === pollPages}
             />
-          <hstack width="100%" height="100%" alignment="middle">
+         
+          </hstack>
+        )}
+        
+        <spacer grow/>
+
+        <hstack width="100%" height="100%" alignment="middle">
           <button
           size="medium"
           appearance="primary"
@@ -187,10 +194,6 @@ export const VotePage: Devvit.BlockComponent<PollProps> =  (
           Vote!
         </button>
         </hstack>
-          </hstack>
-        )}
-        
-        <spacer />
         
         
         
