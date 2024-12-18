@@ -9,7 +9,7 @@ OutwitQuiz is a dynamic, real-time quiz platform where users can answer question
 - Managing the voting system and the algorithm to show options
 
 ## What's next for outwitquiz
-Enhanced Customization: Allowing users to design their own quizzes with themes, timers, and advanced scoring options (wagering on options).
-Accumulative leaderboard & Rewards: Adding gamification elements like badges, ranks, and weekly challenges to increase engagement.
-AI-Powered Question Suggestions: Leveraging AI to suggest trivia questions and scheduling 
-Subreddit Integration: Encouraging scheduled themed quizzes for subreddits.
+- Enhanced Customization: Allowing users to design their own quizzes with themes, timers, and advanced scoring options (wagering on options).
+- Accumulative leaderboard & Rewards: Adding gamification elements like badges, ranks, and weekly challenges to increase engagement.
+- AI-Powered Question Suggestions: Leveraging AI to suggest trivia questions and scheduling 
+- Subreddit Integration: Encouraging scheduled themed quizzes for subreddits.
